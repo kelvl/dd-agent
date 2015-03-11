@@ -1,6 +1,7 @@
 import logging
 from time import time
 
+from governor import Governor
 from checks.metric_types import MetricTypes
 from config import get_histogram_aggregates, get_histogram_percentiles
 
@@ -874,6 +875,8 @@ class MetricsAggregator(Aggregator):
             's': Set,
             '_dd-r': Rate,
         }
+
+    # Add Governor decorator here
 
     def submit_metric(self, name, value, mtype, tags=None, hostname=None,
                                 device_name=None, timestamp=None, sample_rate=1):
