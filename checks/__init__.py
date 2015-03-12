@@ -265,6 +265,7 @@ class Check(object):
                 pass
         return metrics
 
+
 class AgentCheck(object):
     OK, WARNING, CRITICAL, UNKNOWN = (0, 1, 2, 3)
 
@@ -562,6 +563,10 @@ class AgentCheck(object):
             instance_statuses.append(instance_status)
         return instance_statuses
 
+    def switch_instance(self):
+        pass
+
+    @switch_instance
     def check(self, instance):
         """
         Overriden by the check class. This will be called to run the check.

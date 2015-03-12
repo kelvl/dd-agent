@@ -1,23 +1,5 @@
+import copy
 from collections import defaultdict
-
-
-class Governor(object):
-    def __init__(self, func):
-        self.func = func
-        self.counter = 0
-        self._rules = []
-
-    def increment(self):
-        self.counter += 1
-
-    def __call__(self, *args, **kw):
-        # Main work
-        print "Processing metric"
-        print "Args " + str(args)
-        print "Kwargs " + str(kw)
-        self.increment()
-        print "Counter value " + str(self.counter)
-        return self.func(*args, **kw)
 
 
 class LimitConfigError(Exception):
@@ -25,18 +7,47 @@ class LimitConfigError(Exception):
     pass
 
 
+class Governor(object):
+    _RULES = []
+
+    @classmethod
+    def init(cls, config):
+        cls._RULES = RuleParser.parse_rules(config)
+
+    def __init__(self, func, identifier=None):
+        self.func = func
+        self.instance_id = identifier
+        # Recursive copy
+        self._rules = copy.deepcopy(self._RULES)
+
+    def _check(self, **kw):
+        # Check all
+        return all(r.check(kw) for r in self._rules)
+
+    def __call__(self, *args, **kw):
+        # Main work
+        # print "Processing metric"
+        # print "Args " + str(args)
+        # print "Kwargs " + str(kw)
+        if self._check(**kw):
+            return self.func(*args, **kw)
+
+
 class RuleParser(object):
+    # Context and metric scope limiters
     _CONTEXT_SCOPES = frozenset(['metric_name', 'instance', 'check'])
     _METRIC_NAME_SCOPES = frozenset(['instance', 'check'])
 
     @staticmethod
     def _scope_to_key(scope, contexts=True):
         """
-        :param scope:
+        :param scope: rule scope
         :type scope: string tuple or singleton
         """
-        scopes = RuleParser._CONTEXT_SCOPES if contexts else RuleParser._METRIC_NAME_SCOPES
-        return lambda x: tuple(x.get(k) for k in scope if k in scopes)
+        _ = RuleParser
+        available_scopes = _._CONTEXT_SCOPES if contexts else _._METRIC_NAME_SCOPES
+        scope = scope if isinstance(scope, tuple) else (scope,)
+        return lambda x: tuple(x.get(k) for k in scope if k in available_scopes)
 
     @staticmethod
     def parse_rules(config):
@@ -50,9 +61,9 @@ class RuleParser(object):
                  for r in config.get('limit_contexts_by', [])]
 
         # Process 'limit_metric_name_number'
-        limit_metric_name_number = config.get('limit_metric_name_number')
-        if limit_metric_name_number:
-            rules.append(Rule(_._scope_to_key(r['scope'], False), r['limit']))
+        extra_limit = config.get('limit_metric_name_number')
+        if extra_limit:
+            rules.append(Rule(_._scope_to_key(extra_limit['scope'], False), extra_limit['limit']))
 
         return rules
 
@@ -63,10 +74,10 @@ class RuleParser(object):
 class Rule(object):
     def __init__(self, mtrc_to_ctxt_key, cnter_limit):
         self.to_key = mtrc_to_ctxt_key       # From metric returns hash key
-        self.contexts_by_key = defaultdict(int)       # Hash storage
+        self._contexts_by_key = defaultdict(int)       # Hash storage
         self._counter_limit = cnter_limit            # Actual limit
 
     def check(self, *args, **kw):
         key = self.to_key(*args, **kw)
-        self.contexts_by_key[key] += 1
-        return self.contexts_by_key[key] <= self._counter_limit
+        self._contexts_by_key[key] += 1
+        return self._contexts_by_key[key] <= self._counter_limit
