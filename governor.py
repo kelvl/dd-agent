@@ -14,14 +14,14 @@ class Governor(object):
     def init(cls, config):
         cls._RULES = RuleParser.parse_rules(config)
 
-    def __init__(self, func, identifier=None):
+    def __init__(self, func, instance_footprint):
         self.func = func
-        self.instance_id = identifier
+        self.instance_footprint = instance_footprint or [0]
         # Recursive copy
         self._rules = copy.deepcopy(self._RULES)
 
     def _check(self, **kw):
-        # Check all
+        # All rules pass
         return all(r.check(kw) for r in self._rules)
 
     def __call__(self, *args, **kw):
@@ -29,7 +29,7 @@ class Governor(object):
         # print "Processing metric"
         # print "Args " + str(args)
         # print "Kwargs " + str(kw)
-        if self._check(**kw):
+        if self._check(instance=tuple(self.instance_footprint), **kw):
             return self.func(*args, **kw)
 
 

@@ -5,10 +5,10 @@ from governor import Governor, Rule, RuleParser
 
 class MockMetricAggregator(object):
     """a MockClass for tests"""
-    def __init__(self):
-        self.submit_metric = Governor(self.submit_metric)
+    def __init__(self, footprint=None):
+        self.submit_metric = Governor(self.submit_metric, footprint)
 
-    def submit_metric(self, instance):
+    def submit_metric(self, metric_name):
         return True
 
 
@@ -22,20 +22,36 @@ class GovernorTestCase(unittest.TestCase):
 
     NO_LIMIT = {}
 
-    def test_contamination(self):
+    def test_no_check_contamination(self):
         """
         No cross contamination between != metric aggregators
         """
+        # Governor.init(self.LIMIT_METRIC_NB)
+
+        # m1 = MockMetricAggregator()
+        # m2 = MockMetricAggregator()
+
+        # self.assertTrue(m1.submit_metric(instance='firstInstance'))
+        # self.assertTrue(m1.submit_metric(instance='firstInstance'))
+        # self.assertTrue(m1.submit_metric(instance='firstInstance') is None)  # Blocked !
+
+        # self.assertTrue(m2.submit_metric(instance='firstInstance'))  # Not blocked
+
+    def test_no_instance_contamination(self):
+        """
+        Instance footprint is correctly being updated
+        """
+        instance_footprint = [0]
         Governor.init(self.LIMIT_METRIC_NB)
 
-        m1 = MockMetricAggregator()
-        m2 = MockMetricAggregator()
+        m1 = MockMetricAggregator(instance_footprint)
+        self.assertTrue(m1.submit_metric("metric.name"))
+        self.assertTrue(m1.submit_metric("metric.name"))
+        self.assertTrue(m1.submit_metric("metric.name") is None)  # Blocked !
 
-        self.assertTrue(m1.submit_metric(instance='firstInstance'))
-        self.assertTrue(m1.submit_metric(instance='firstInstance'))
-        self.assertTrue(m1.submit_metric(instance='firstInstance') is None)  # Blocked !
-
-        self.assertTrue(m2.submit_metric(instance='firstInstance'))  # Not blocked
+        # Update instance_footprint
+        instance_footprint.append(1)
+        self.assertTrue(m1.submit_metric("metric.name"))
 
     def test_empty_conf(self):
         """
@@ -46,7 +62,7 @@ class GovernorTestCase(unittest.TestCase):
         m1 = MockMetricAggregator()
 
         for x in xrange(1, 100):
-            self.assertTrue(m1.submit_metric(instance='firstInstance'))
+            self.assertTrue(m1.submit_metric(metric_name="metric.name"))
 
 
 class RuleTestCase(unittest.TestCase):

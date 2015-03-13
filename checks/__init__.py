@@ -284,26 +284,28 @@ class AgentCheck(object):
         """
         from aggregator import MetricsAggregator
 
+        # self._instance_reference = [-1]
+
         self.name = name
         self.init_config = init_config or {}
         self.agentConfig = agentConfig
         self.hostname = agentConfig.get('checksd_hostname') or get_hostname(agentConfig)
         self.log = logging.getLogger('%s.%s' % (__name__, name))
-
-        self.aggregator = MetricsAggregator(
-            self.hostname,
-            formatter=agent_formatter,
-            recent_point_threshold=agentConfig.get('recent_point_threshold', None),
-            histogram_aggregates=agentConfig.get('histogram_aggregates'),
-            histogram_percentiles=agentConfig.get('histogram_percentiles')
-        )
-
         self.events = []
         self.service_checks = []
         self.instances = instances or []
         self.warnings = []
         self.library_versions = None
         self.last_collection_time = defaultdict(int)
+
+        self.aggregator = MetricsAggregator(
+            self.hostname,
+            formatter=agent_formatter,
+            recent_point_threshold=agentConfig.get('recent_point_threshold', None),
+            histogram_aggregates=agentConfig.get('histogram_aggregates'),
+            histogram_percentiles=agentConfig.get('histogram_percentiles'),
+            instance_indicator=self.last_collection_time
+        )
 
     def instance_count(self):
         """ Return the number of instances that are configured for this check. """
@@ -563,10 +565,6 @@ class AgentCheck(object):
             instance_statuses.append(instance_status)
         return instance_statuses
 
-    def switch_instance(self):
-        pass
-
-    @switch_instance
     def check(self, instance):
         """
         Overriden by the check class. This will be called to run the check.
@@ -640,7 +638,6 @@ class AgentCheck(object):
     METRIC_REPLACEMENT = re.compile(r'([^a-zA-Z0-9_.]+)|(^[^a-zA-Z]+)')
     DOT_UNDERSCORE_CLEANUP = re.compile(r'_*\._*')
 
-
     def convert_to_underscore_separated(self, name):
         """
         Convert from CamelCase to camel_case
@@ -662,6 +659,10 @@ class AgentCheck(object):
             return val
         else:
             return cast(val)
+
+    def _update_instance_reference(self):
+        self._instance_reference[0] += 1
+
 
 def agent_formatter(metric, value, timestamp, tags, hostname, device_name=None,
                                                 metric_type=None, interval=None):

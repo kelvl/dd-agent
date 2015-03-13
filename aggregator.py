@@ -855,7 +855,7 @@ class MetricsAggregator(Aggregator):
     def __init__(self, hostname, interval=1.0, expiry_seconds=300,
             formatter=None, recent_point_threshold=None,
             histogram_aggregates=None, histogram_percentiles=None,
-            utf8_decoding=False):
+            utf8_decoding=False, instance_footprint=None):
         super(MetricsAggregator, self).__init__(
             hostname,
             interval,
@@ -877,8 +877,7 @@ class MetricsAggregator(Aggregator):
             's': Set,
             '_dd-r': Rate,
         }
-        self._instance_identifier = None
-        self.submit_metric = Governor(self.submit_metric, self._instance_identifier)
+        self.submit_metric = Governor(self.submit_metric, instance_footprint)
 
     def generate_unique(self):
         self._instance_identifier = time()
