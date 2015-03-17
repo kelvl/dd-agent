@@ -532,6 +532,13 @@ class AgentCheck(object):
         self.warnings = []
         return warnings
 
+    def get_governor_status(self):
+        """
+        Return governor status
+        """
+        pass
+        # return self.aggregator.()
+
     def run(self):
         """ Run all instances. """
         instance_statuses = []

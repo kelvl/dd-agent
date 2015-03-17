@@ -877,11 +877,8 @@ class MetricsAggregator(Aggregator):
             's': Set,
             '_dd-r': Rate,
         }
-        self._instance_identifier = None
-        self.submit_metric = Governor(self.submit_metric, self._instance_identifier)
-
-    def generate_unique(self):
-        self._instance_identifier = time()
+        # self.governor = Governor(self.submit_metric)
+        self.submit_metric = Governor(self.submit_metric)
 
     def submit_metric(self, name, value, mtype, tags=None, hostname=None,
                       device_name=None, timestamp=None, sample_rate=1):
