@@ -855,7 +855,7 @@ class MetricsAggregator(Aggregator):
     def __init__(self, hostname, interval=1.0, expiry_seconds=300,
             formatter=None, recent_point_threshold=None,
             histogram_aggregates=None, histogram_percentiles=None,
-            utf8_decoding=False):
+            utf8_decoding=False, governor=None):
         super(MetricsAggregator, self).__init__(
             hostname,
             interval,
@@ -877,8 +877,11 @@ class MetricsAggregator(Aggregator):
             's': Set,
             '_dd-r': Rate,
         }
-        # self.governor = Governor(self.submit_metric)
-        self.submit_metric = Governor(self.submit_metric)
+
+        # Link governor to submit_metric method
+        if governor:
+            governor.set(self.submit_metric)
+            self.submit_metric = governor
 
     def submit_metric(self, name, value, mtype, tags=None, hostname=None,
                       device_name=None, timestamp=None, sample_rate=1):

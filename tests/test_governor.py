@@ -16,7 +16,8 @@ class MockMetricAggregator(MetricsAggregator):
     #     return True
 
     def __init__(self):
-        super(MockMetricAggregator, self).__init__("")
+        mgovernor = Governor()
+        super(MockMetricAggregator, self).__init__("", governor=mgovernor)
 
     def submit_metric(self, name):
         return True
@@ -75,7 +76,8 @@ class GovernorTestCase(unittest.TestCase):
         """
         def myfunction(self, arg1, arg2, arg3):
             pass
-        m_governor = Governor(myfunction)
+        m_governor = Governor()
+        m_governor.set(myfunction)
         self.assertTrue(
             m_governor._name_args([1, 2, 3], {}) == {'arg1': 1, 'arg2': 2, 'arg3': 3})
         self.assertTrue(

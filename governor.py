@@ -15,11 +15,15 @@ class Governor(object):
     def init(cls, config):
         cls._RULES = LimiterParser.parse_rules(config)
 
-    def __init__(self, func, identifier=None):
-        self._submit_metric = func
-        self._submit_metric_arg_names = inspect.getargspec(func)[0]
+    def __init__(self, func=None, identifier=None):
+        # self._submit_metric = func
+        # self._submit_metric_arg_names = inspect.getargspec(func)[0]
         # self.instance_id = identifier
         self._rules = copy.deepcopy(self._RULES)
+
+    def set(self, func):
+        self._submit_metric = func
+        self._submit_metric_arg_names = inspect.getargspec(func)[0]
 
     def _name_args(self, arg_list, kwargs):
         named_args = kwargs.copy()

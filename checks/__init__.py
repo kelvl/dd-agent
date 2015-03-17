@@ -19,6 +19,7 @@ from collections import defaultdict
 from util import LaconicFilter, get_os, get_hostname, get_next_id, yLoader
 from config import get_confd_path
 from checks import check_status
+from governor import Governor
 
 # 3rd party
 import yaml
@@ -290,12 +291,14 @@ class AgentCheck(object):
         self.hostname = agentConfig.get('checksd_hostname') or get_hostname(agentConfig)
         self.log = logging.getLogger('%s.%s' % (__name__, name))
 
+        self.governor = Governor()
         self.aggregator = MetricsAggregator(
             self.hostname,
             formatter=agent_formatter,
             recent_point_threshold=agentConfig.get('recent_point_threshold', None),
             histogram_aggregates=agentConfig.get('histogram_aggregates'),
-            histogram_percentiles=agentConfig.get('histogram_percentiles')
+            histogram_percentiles=agentConfig.get('histogram_percentiles'),
+            governor=self.governor
         )
 
         self.events = []
@@ -536,8 +539,7 @@ class AgentCheck(object):
         """
         Return governor status
         """
-        pass
-        # return self.aggregator.()
+        return self.governor.flush()
 
     def run(self):
         """ Run all instances. """
