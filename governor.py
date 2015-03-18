@@ -60,14 +60,9 @@ class Governor(object):
 
 
 class LimiterParser(object):
-    # Context and metric scope limiters
-    _CONTEXT_SCOPES = frozenset(['metric_name', 'instance', 'check'])
-    _METRIC_NAME_SCOPES = frozenset(['instance', 'check'])
-
-    # Constant keys
-    _CONTEXT_KEYS = ['hostname', 'tags']
-    _METRIC_NAME_KEY = ['metric_name']
-
+    """
+    A generic limiter
+    """
     @staticmethod
     def parse_rules(config):
         """
@@ -93,7 +88,7 @@ class Limiter(object):
     def __init__(self, scope, selection, limit=None):
         # Definition
         self._scope, self._selection = self._make_scope_and_selection(scope, selection)
-        self._limit_cardinality = limit
+        self._limit_cardinal = limit
 
         # Metric values extractor
         self._extract_metric_keys = self._extract_to_keys(self._scope, self._selection)
@@ -160,7 +155,7 @@ class Limiter(object):
         else:
             contexts = self._selections_by_scope[scope_key]
 
-            if len(contexts) >= self._limit_cardinality:
+            if len(contexts) >= self._limit_cardinal:
                 self._blocked += 1
                 return False
 
@@ -168,4 +163,21 @@ class Limiter(object):
             return True
 
     def get_status(self):
+        """
+        Returns limiter trace:
+        `scope_cardinal`            -> Number of scopes registred
+        `scope_select`              -> Scope with the maximum of selections registred
+        `selection_max_cardinal`    -> Maximum number of selections registred for a scope
+        `blocked`                   -> Number of blocked metrics
+        """
+        scope_cardinal = len(self._selections_by_scope)
+        blocked = self._blocked
+
+        scope
+
+        for scope, selections in self._selections_by_scope.iteritems():
+            pass
+
+
+
         pass
