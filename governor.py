@@ -3,8 +3,10 @@ import inspect
 from collections import defaultdict
 
 
-class LimitConfigError(Exception):
-    """Base class for exceptions in this module."""
+class LimiterConfigError(Exception):
+    """
+    Error when parsing limiter
+    """
     pass
 
 
@@ -73,76 +75,97 @@ class LimiterParser(object):
         :type config: dictionnary
         """
         # Process 'limit_contexts_by'
-        rules = [ContextsLimiter(r['scope'], r['limit'])
-                 for r in config.get('limit_contexts_by', [])]
+        limiters = [Limiter(r.get('scope'), r.get('selection'), r.get('limit'))
+                    for r in config.get('limiters', [])]
 
-        # Process 'limit_metric_name_number'
-        extra_limit = config.get('limit_metric_name_number')
-        if extra_limit:
-            rules.append(MetricNamesLimiter(extra_limit['scope'], extra_limit['limit']))
-
-        # TODO Process filter metric_name
-        return rules
+        return limiters
 
     # def submit_metric(self, name, value, mtype, tags=None, hostname=None,
     #                             device_name=None, timestamp=None, sample_rate=1):
 
 
-# TODO
-# Add a filter class
 class Limiter(object):
     """
     A generic limiter
     """
-    _SCOPES = []
-    _TO_LIMIT = []
+    _ATOMS = frozenset(['name', 'instance', 'check', 'tags'])
 
-    def __init__(self, scope, limit):
-        self._scope = scope
-        self._to_scope_key, self._to_limit_key = self._extract_to_keys(scope)
-        self._contexts_by_key = defaultdict(set)    # Hash storage
-        self._counter_limit = limit                 # Actual limit
-        self._blocked = 0                           # Blocked metrics counter
+    def __init__(self, scope, selection, limit=None):
+        # Definition
+        self._scope, self._selection = self._make_scope_and_selection(scope, selection)
+        self._limit_cardinality = limit
+
+        # Metric values extractor
+        self._extract_metric_keys = self._extract_to_keys(self._scope, self._selection)
+
+        # Limiter data storage
+        self._selections_by_scope = defaultdict(set)
+
+        # Trace
+        self._blocked = 0
 
     @classmethod
-    def _extract_to_keys(cls, scope):
+    def _make_scope_and_selection(cls, scope, selection):
         """
+        Check limiter `scope` and `selection` settings. Cast as a tuple and returns.
+
         :param scope: scope where the rule applies
         :type scope: string tuple or singleton
-        """
-        # Filter scope and cast as a tuple
-        scope = scope if isinstance(scope, tuple) else (scope,)
-        scope = tuple(s for s in scope if s in cls._SCOPES)
 
-        return lambda x: tuple(x.get(k) for k in scope), \
-            lambda x: tuple(x.get(k) for k in cls._TO_LIMIT)
+        :param selection: selection where the rule applies
+        :type selection: string tuple or singleton
+        """
+        if not scope or not selection:
+            raise LimiterConfigError("Limiters must contain a `scope` and a `selection`.")
+
+        scope = scope if isinstance(scope, tuple) else (scope,)
+        selection = selection if isinstance(selection, tuple) else (selection,)
+
+        for s in scope:
+            if s not in cls._ATOMS:
+                raise LimiterConfigError("Unrecognized {0} within `scope`. `scope` must"
+                                         " be a subset of {1}".format(s, cls._ATOMS))
+        for s in selection:
+            if s not in cls._ATOMS:
+                raise LimiterConfigError("Unrecognized {0} within `selection`. `selection` must"
+                                         " be a subset of {1}".format(s, cls._ATOMS))
+
+        return scope, selection
+
+    @classmethod
+    def _extract_to_keys(cls, scope, selection):
+        """
+        Returns a function that extracts scope and selection values from a metric
+
+        :param scope: scope where the rule applies
+        :type scope: string tuple or singleton
+
+        :param selection: selection where the rule applies
+        :type selection: string tuple or singleton
+        """
+        return lambda x: (tuple(x.get(k) for k in scope), tuple(x.get(k) for k in selection))
 
     def check(self, *args, **kw):
-        scope_key = self._to_scope_key(*args, **kw)
-        limit_key = self._to_limit_key(*args, **kw)
+        """
+        Limiter main task.
+        Check incoming metrics against the limit set, and returns a boolean
 
-        if limit_key in self._contexts_by_key[scope_key]:
+        :param *args: metric list parameters
+        :param **kw: metric named parameters
+        """
+        scope_key, limit_key = self._extract_metric_keys(*args, **kw)
+
+        if limit_key in self._selections_by_scope[scope_key]:
             return True
         else:
-            contexts = self._contexts_by_key[scope_key]
+            contexts = self._selections_by_scope[scope_key]
+
+            if len(contexts) >= self._limit_cardinality:
+                self._blocked += 1
+                return False
+
             contexts.add(limit_key)
-            return len(contexts) <= self._counter_limit
+            return True
 
     def get_status(self):
         pass
-
-
-class ContextsLimiter(Limiter):
-    """
-    A limiter for contexts
-    """
-    _SCOPES = frozenset(['name', 'instance', 'check'])
-    _TO_LIMIT = ('hostname', 'tags')
-
-
-class MetricNamesLimiter(Limiter):
-    """
-    A limiter for metric names
-    """
-    _SCOPES = frozenset(['instance', 'check'])
-    _TO_LIMIT = ('name',)

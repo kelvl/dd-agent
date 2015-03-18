@@ -1,6 +1,6 @@
 import unittest
 
-from governor import Governor, Limiter, LimiterParser
+from governor import Governor, Limiter, LimiterParser, LimiterConfigError
 from aggregator import MetricsAggregator
 
 
@@ -25,16 +25,16 @@ class MockMetricAggregator(MetricsAggregator):
 
 class MockLimiter(Limiter):
     """docstring for MockLimiter"""
-    _SCOPES = frozenset(['key1', 'key2', 'key3'])
-    _TO_LIMIT = ('key4', 'key5')
+    _ATOMS = frozenset(['key1', 'key2', 'key3', 'key4', 'key5'])
 
 
 class GovernorTestCase(unittest.TestCase):
     LIMIT_METRIC_NB = {
-        'limit_metric_name_number': {
+        'limiters': [{
             'scope': 'check',
+            'selection': 'name',
             'limit': 1
-        }
+        }]
     }
 
     NO_LIMIT = {}
@@ -83,23 +83,11 @@ class GovernorTestCase(unittest.TestCase):
         self.assertTrue(
             m_governor._name_args([1], {'arg2': 2, 'arg3': 3}) == {'arg1': 1, 'arg2': 2, 'arg3': 3})
 
-    # def test_output(self):
-    #     Governor.init(self.LIMIT_METRIC_NB)
-    #     m1 = MockMetricAggregator()
-
-    #     m1.submit_metric('my_metric')
-    #     m1.submit_metric('another_metric')
-    #     m1.submit_metric('my_metric')
-
-    #     import pdb
-    #     pdb.set_trace()
-    #     m1.submit_metric.print_summary()
-
 
 class LimiterTestCase(unittest.TestCase):
     def test_limit(self):
         """
-        Test the limiter check logic
+        Check incoming metrics against the limit set
         """
         metric1 = {
             'key1': 'value',
@@ -114,17 +102,22 @@ class LimiterTestCase(unittest.TestCase):
 
         }
 
-        limiter = MockLimiter('key1', 1)
+        limiter = MockLimiter('key1', 'key4', 1)
+
+        # Check limiter task
         self.assertTrue(limiter.check(metric1))
         self.assertFalse(limiter.check(metric2))
         self.assertTrue(limiter.check(metric1))
 
+        # Check trace
+        self.assertTrue(limiter._blocked == 1)
+
     def test_key_extractor(self):
         """
-        Test the key extraction logic
+        Extract scope and selection keys from metrics
         """
-        limiter1 = MockLimiter(('key1', 'wrongkey', 'key3'), 1)
-        limiter2 = MockLimiter('key1', 1)
+        limiter1 = MockLimiter(('key1', 'key3'), ('key4', 'key5'), 1)
+        limiter2 = MockLimiter('key1', 'key4', 1)
 
         metric_args = {
             'key1': 'value1',
@@ -133,48 +126,76 @@ class LimiterTestCase(unittest.TestCase):
             'key4': 'value4',
             'key5': 'value5'
         }
-        # Test _to_scope_key
-        self.assertTrue(limiter1._to_scope_key(metric_args) == ('value1', 'value3'))
-        self.assertTrue(limiter2._to_scope_key(metric_args) == ('value1',))
 
-        # Test _to_limit_key
-        self.assertTrue(limiter1._to_limit_key(metric_args) == ('value4', 'value5'))
-        self.assertTrue(limiter2._to_limit_key(metric_args) == ('value4', 'value5'))
+        # Test _to_scope_key
+        scope_key1, limit_key1 = limiter1._extract_metric_keys(metric_args)
+        self.assertTrue(scope_key1 == ('value1', 'value3'))
+        self.assertTrue(limit_key1 == ('value4', 'value5'))
+
+        scope_key2, limit_key2 = limiter2._extract_metric_keys(metric_args)
+        self.assertTrue(scope_key2 == ('value1',))
+        self.assertTrue(limit_key2 == ('value4',))
 
 
 class LimiterParserTestCase(unittest.TestCase):
     LIMIT_CONFIG = {
-        'limit_contexts_by': [
+        'limiters': [
             {
                 'scope': 'name',
+                'selection': 'tags',
                 'limit': 3
             },
             {
                 'scope': ('name', 'instance'),
+                'selection': 'tags',
                 'limit': 5
             },
             {
                 'scope': 'check',
+                'selection': 'tags',
+                'limit': 10
+            },
+            {
+                'scope': 'instance',
+                'selection': 'name',
                 'limit': 10
             }
-        ],
-        'limit_metric_name_number': {
-            'scope': 'instance',
-            'limit': 10
-        }
+        ]
+    }
+
+    NO_SCOPE_CONFIG = {
+        'limiters': [
+            {
+                # 'scope': 'name',
+                'selection': 'tags',
+                'limit': 3
+            }
+        ]
+    }
+
+    UNKOWN_SCOPE_CONFIG = {
+        'limiters': [
+            {
+                'scope': ('name', 'unknown_scope'),
+                'selection': 'tags',
+                'limit': 3
+            }
+        ]
     }
 
     NO_CONFIG = {}
 
     def test_rule_parser(self):
         """
-        Test parsing logic
+        Parse limiters
         """
 
         # No config
         self.assertTrue(LimiterParser.parse_rules(self.NO_CONFIG) == [])
 
         # Incorrect config
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_rules, self.NO_SCOPE_CONFIG)
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_rules, self.UNKOWN_SCOPE_CONFIG)
 
         # Correct config
         rules = LimiterParser.parse_rules(self.LIMIT_CONFIG)
