@@ -26,9 +26,11 @@ import glob
 # Custom modules
 from checks.collector import Collector
 from checks.check_status import CollectorStatus
-from config import get_config, get_system_stats, get_parsed_args, load_check_directory, get_confd_path, check_yaml, get_logging_config
+from config import get_config, get_system_stats, get_parsed_args, load_check_directory, \
+    get_confd_path, check_yaml, get_logging_config, get_governor_config
 from daemon import Daemon, AgentSupervisor
 from emitter import http_emitter
+from governor import Governor
 from util import Watchdog, PidFile, EC2, get_os, get_hostname
 from jmxfetch import JMXFetch
 
@@ -99,6 +101,10 @@ class Agent(Daemon):
         checksd = load_check_directory(agentConfig, hostname)
 
         self.collector = Collector(agentConfig, emitters, systemStats, hostname)
+
+        # Configure the governor
+        governor_config = get_governor_config()
+        Governor.init(governor_config)
 
         # Configure the watchdog.
         check_frequency = int(agentConfig['check_freq'])
@@ -201,6 +207,7 @@ def main():
     agentConfig = get_config(options=options)
     autorestart = agentConfig.get('autorestart', False)
     hostname = get_hostname(agentConfig)
+    governor_config = get_governor_config()
 
     COMMANDS = [
         'start',
@@ -280,6 +287,7 @@ def main():
         except Exception:
             # If not an old-style check, try checks.d
             checks = load_check_directory(agentConfig, hostname)
+            Governor.init(governor_config)
             for check in checks['initialized_checks']:
                 if check.name == check_name:
                     check.run()

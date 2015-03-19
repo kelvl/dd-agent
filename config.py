@@ -272,6 +272,23 @@ def get_histogram_percentiles(configstr=None):
 
     return result
 
+
+def get_governor_config():
+    # YANN TODO: choose where to get the governor config from and load it
+    # HARDCODED TEMPORARY SOLUTION
+    LIMIT_CONFIG = {
+        'limiters': [
+            {
+                'scope': 'check',
+                'selection': 'name',
+                'limit': 10
+            }
+        ]
+    }
+
+    return LIMIT_CONFIG
+
+
 def get_config(parse_args=True, cfg_path=None, options=None):
     if parse_args:
         options, _ = get_parsed_args()
