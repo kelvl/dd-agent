@@ -18,10 +18,7 @@ class Governor(object):
         cls._LIMITERS = LimiterParser.parse_limiters(config)
 
     def __init__(self, func=None, identifier=None):
-        # self._submit_metric = func
-        # self._submit_metric_arg_names = inspect.getargspec(func)[0]
-        # self.instance_id = identifier
-        self._rules = copy.deepcopy(self._LIMITERS)
+        self._limiters = copy.deepcopy(self._LIMITERS)
 
     def set(self, func):
         self._submit_metric = func
@@ -41,11 +38,11 @@ class Governor(object):
         """
         Check metric against all limiters.
         """
-        return all(r.check(args) for r in self._rules)
+        return all(r.check(args) for r in self._limiters)
 
     def __call__(self, *args, **kw):
         # Shortcut when no rules are defined
-        if not self._rules:
+        if not self._limiters:
             return self._submit_metric(*args, **kw)
 
         # Really dirty trick -> to improve
@@ -62,7 +59,7 @@ class Governor(object):
         """
         Returns limiter statuses
         """
-        return [l.get_status for l in self._rules]
+        return [l.get_status() for l in self._limiters]
 
 
 class LimiterParser(object):
@@ -81,9 +78,6 @@ class LimiterParser(object):
                     for r in config.get('limiters', [])]
 
         return limiters
-
-    # def submit_metric(self, name, value, mtype, tags=None, hostname=None,
-    #                             device_name=None, timestamp=None, sample_rate=1):
 
 
 class Limiter(object):

@@ -281,7 +281,7 @@ def get_governor_config():
             {
                 'scope': 'check',
                 'selection': 'name',
-                'limit': 10
+                'limit': 100
             }
         ]
     }

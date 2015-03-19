@@ -286,8 +286,8 @@ def main():
             print getattr(checks.collector, check_name)(log).check(agentConfig)
         except Exception:
             # If not an old-style check, try checks.d
-            checks = load_check_directory(agentConfig, hostname)
             Governor.init(governor_config)
+            checks = load_check_directory(agentConfig, hostname)
             for check in checks['initialized_checks']:
                 if check.name == check_name:
                     check.run()
