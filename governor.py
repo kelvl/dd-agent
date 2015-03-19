@@ -11,23 +11,26 @@ class LimiterConfigError(Exception):
 
 
 class Governor(object):
-    _RULES = []
+    _LIMITERS = []
 
     @classmethod
     def init(cls, config):
-        cls._RULES = LimiterParser.parse_rules(config)
+        cls._LIMITERS = LimiterParser.parse_limiters(config)
 
     def __init__(self, func=None, identifier=None):
         # self._submit_metric = func
         # self._submit_metric_arg_names = inspect.getargspec(func)[0]
         # self.instance_id = identifier
-        self._rules = copy.deepcopy(self._RULES)
+        self._rules = copy.deepcopy(self._LIMITERS)
 
     def set(self, func):
         self._submit_metric = func
         self._submit_metric_arg_names = inspect.getargspec(func)[0]
 
     def _name_args(self, arg_list, kwargs):
+        """
+        Name `arg_list` items and merge with `kwargs`
+        """
         named_args = kwargs.copy()
         for i, arg_value in enumerate(arg_list):
             arg_name = self._submit_metric_arg_names[i + 1]
@@ -35,7 +38,9 @@ class Governor(object):
         return named_args
 
     def _check(self, args):
-        # Check all
+        """
+        Check metric against all limiters.
+        """
         return all(r.check(args) for r in self._rules)
 
     def __call__(self, *args, **kw):
@@ -54,9 +59,10 @@ class Governor(object):
         pass
 
     def get_status(self):
-        # Can be wrapped around get_metric method
-        for r in self._rules:
-            r.get_status()
+        """
+        Returns limiter statuses
+        """
+        return [l.get_status for l in self._rules]
 
 
 class LimiterParser(object):
@@ -64,8 +70,9 @@ class LimiterParser(object):
     A generic limiter
     """
     @staticmethod
-    def parse_rules(config):
+    def parse_limiters(config):
         """
+        Parse limiter config to limiters
         :param config: agent configuration
         :type config: dictionnary
         """
@@ -97,7 +104,7 @@ class Limiter(object):
         self._selections_by_scope = defaultdict(set)
 
         # Trace
-        self._blocked = 0
+        self._blocked_metrics = 0
 
     @classmethod
     def _make_scope_and_selection(cls, scope, selection):
@@ -156,7 +163,7 @@ class Limiter(object):
             contexts = self._selections_by_scope[scope_key]
 
             if len(contexts) >= self._limit_cardinal:
-                self._blocked += 1
+                self._blocked_metrics += 1
                 return False
 
             contexts.add(limit_key)
@@ -166,18 +173,34 @@ class Limiter(object):
         """
         Returns limiter trace:
         `scope_cardinal`            -> Number of scopes registred
-        `scope_select`              -> Scope with the maximum of selections registred
-        `selection_max_cardinal`    -> Maximum number of selections registred for a scope
-        `blocked`                   -> Number of blocked metrics
+        `blocked_metrics`           -> Number of blocked metrics
+        `scope_overflow_cardinal`   -> Number of scope with selection overflows
+        `max_selection_scope`       -> Scope with the maximum of selections registred
+        `max_selection_cardinal`    -> Maximum number of selections registred for a scope
         """
         scope_cardinal = len(self._selections_by_scope)
-        blocked = self._blocked
-
-        scope
+        scope_overflow_cardinal = 0
+        max_selection_scope = None
+        max_selection_cardinal = None
 
         for scope, selections in self._selections_by_scope.iteritems():
-            pass
+            if not max_selection_cardinal or (max_selection_cardinal < len(selections)):
+                max_selection_cardinal = len(selections)
+                max_selection_scope = scope
+            if len(selections) >= self._limit_cardinal:
+                scope_overflow_cardinal += 1
 
-
-
-        pass
+        return {
+            'definition': {
+                'scope': self._scope,
+                'selection': self._selection,
+                'limit': self._limit_cardinal
+            },
+            'trace': {
+                'scope_cardinal': scope_cardinal,
+                'blocked_metrics': self._blocked_metrics,
+                'scope_overflow_cardinal': scope_overflow_cardinal,
+                'max_selection_scope': max_selection_scope,
+                'max_selection_cardinal': max_selection_cardinal
+            }
+        }

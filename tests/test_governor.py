@@ -6,20 +6,12 @@ from aggregator import MetricsAggregator
 
 class MockMetricAggregator(MetricsAggregator):
     """a MockClass for tests"""
-    # def __init__(self):
-    #     self.governor = Governor(self.submit_metric)
-    #     self.submit_metric = self.governor.call
-
-    # @Governor
-    # def submit_metric(self, name, value, mtype, tags=None, hostname=None,
-    #                   device_name=None, timestamp=None, sample_rate=1):
-    #     return True
-
     def __init__(self):
         mgovernor = Governor()
         super(MockMetricAggregator, self).__init__("", governor=mgovernor)
 
-    def submit_metric(self, name):
+    def submit_metric(self, name, value=42, mtype='g', tags=None, hostname=None,
+                      device_name=None, timestamp=None, sample_rate=1):
         return True
 
 
@@ -45,7 +37,7 @@ class GovernorTestCase(unittest.TestCase):
         """
         Governor.init(self.LIMIT_METRIC_NB)
 
-        self.assertTrue(len(Governor._RULES) == 1)
+        self.assertTrue(len(Governor._LIMITERS) == 1)
 
         m1 = MockMetricAggregator()
         m2 = MockMetricAggregator()
@@ -85,32 +77,60 @@ class GovernorTestCase(unittest.TestCase):
 
 
 class LimiterTestCase(unittest.TestCase):
+    @staticmethod
+    def generate_metric(v1, v2):
+        """
+        Helper to return a metric with
+        """
+        return {
+            'key1': v1,
+            'key2': v2,
+        }
+
     def test_limit(self):
         """
         Check incoming metrics against the limit set
         """
-        metric1 = {
-            'key1': 'value',
-            'key4': 'value',
-            'key5': 'value'
-
-        }
-        metric2 = {
-            'key1': 'value',
-            'key4': 'other_value',
-            'key5': 'value'
-
-        }
-
-        limiter = MockLimiter('key1', 'key4', 1)
+        limiter = MockLimiter('key1', 'key2', 1)
 
         # Check limiter task
-        self.assertTrue(limiter.check(metric1))
-        self.assertFalse(limiter.check(metric2))
-        self.assertTrue(limiter.check(metric1))
+        self.assertTrue(limiter.check(self.generate_metric("scope1", "selection1")))
+        self.assertFalse(limiter.check(self.generate_metric("scope1", "selection2")))
+        self.assertTrue(limiter.check(self.generate_metric("scope1", "selection1")))
 
         # Check trace
-        self.assertTrue(limiter._blocked == 1)
+        self.assertTrue(limiter._blocked_metrics == 1)
+
+    def test_limiter_trace(self):
+        """
+        Generate a trace from submitted metrics
+        """
+
+        limiter = MockLimiter('key1', 'key2', 3)
+
+        # Check trace definition
+        definition = limiter.get_status()['definition']
+        self.assertTrue(definition['scope'] == ('key1',))
+        self.assertTrue(definition['selection'] == ('key2',))
+        self.assertTrue(definition['limit'] == 3)
+
+        # Submit metrics
+        limiter.check(self.generate_metric("scope1", "selection1"))
+        limiter.check(self.generate_metric("scope1", "selection2"))
+        limiter.check(self.generate_metric("scope1", "selection3"))  # We reached the max
+        limiter.check(self.generate_metric("scope1", "selection4"))  # Blocked !
+        limiter.check(self.generate_metric("scope1", "selection2"))  # Has no effect
+
+        limiter.check(self.generate_metric("scope2", "selection1"))
+        limiter.check(self.generate_metric("scope2", "selection2"))
+
+        # Check trace
+        trace = limiter.get_status()['trace']
+        self.assertTrue(trace['scope_cardinal'] == 2)
+        self.assertTrue(trace['blocked_metrics'] == 1)
+        self.assertTrue(trace['scope_overflow_cardinal'] == 1)
+        self.assertTrue(trace['max_selection_scope'] == ("scope1",))
+        self.assertTrue(trace['max_selection_cardinal'] == 3)
 
     def test_key_extractor(self):
         """
@@ -189,14 +209,13 @@ class LimiterParserTestCase(unittest.TestCase):
         """
         Parse limiters
         """
-
         # No config
-        self.assertTrue(LimiterParser.parse_rules(self.NO_CONFIG) == [])
+        self.assertTrue(LimiterParser.parse_limiters(self.NO_CONFIG) == [])
 
         # Incorrect config
-        self.assertRaises(LimiterConfigError, LimiterParser.parse_rules, self.NO_SCOPE_CONFIG)
-        self.assertRaises(LimiterConfigError, LimiterParser.parse_rules, self.UNKOWN_SCOPE_CONFIG)
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters, self.NO_SCOPE_CONFIG)
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters, self.UNKOWN_SCOPE_CONFIG)
 
         # Correct config
-        rules = LimiterParser.parse_rules(self.LIMIT_CONFIG)
+        rules = LimiterParser.parse_limiters(self.LIMIT_CONFIG)
         self.assertTrue(len(rules) == 4)

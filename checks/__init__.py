@@ -539,7 +539,7 @@ class AgentCheck(object):
         """
         Return governor status
         """
-        return self.governor.flush()
+        return self.governor.get_status()
 
     def run(self):
         """ Run all instances. """
