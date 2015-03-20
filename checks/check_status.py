@@ -11,15 +11,14 @@ import pickle
 import platform
 import sys
 import tempfile
-import traceback
 import time
 from collections import defaultdict
 import os.path
 
 # project
 import config
-from config import _windows_commondata_path, get_config
-from util import get_os, plural, Platform
+from config import _windows_commondata_path, get_config, _is_affirmative
+from util import plural, Platform
 
 # 3rd party
 import ntplib
@@ -276,7 +275,7 @@ class CheckStatus(object):
     def __init__(self, check_name, instance_statuses, metric_count=None,
                  event_count=None, service_check_count=None,
                  init_failed_error=None, init_failed_traceback=None,
-                 library_versions=None, source_type_name=None):
+                 library_versions=None, source_type_name=None, governor_status=[]):
         self.name = check_name
         self.source_type_name = source_type_name
         self.instance_statuses = instance_statuses
@@ -286,6 +285,7 @@ class CheckStatus(object):
         self.init_failed_error = init_failed_error
         self.init_failed_traceback = init_failed_traceback
         self.library_versions = library_versions
+        self.governor_status = governor_status
 
     @property
     def status(self):
@@ -470,6 +470,48 @@ class CollectorStatus(AgentStatus):
                     check_lines += [""]
 
                 lines += check_lines
+
+        # Governor Status
+        governor_enabled = _is_affirmative(get_config().get('use_governor', True))
+
+        if governor_enabled:
+            lines += [
+                "Governor",
+                "========",
+                ""
+            ]
+            if not self.check_statuses:
+                lines.append("  No checks have run yet.")
+            else:
+                for cs in self.check_statuses:
+                    check_lines = [
+                        '  ' + cs.name,
+                        '  ' + '-' * len(cs.name)
+                    ]
+
+                    for limiter in cs.governor_status:
+                        limiter_lines = []
+                        limiter_def = limiter['definition']
+                        limiter_trace = limiter['trace']
+
+                        # Limiter definition & status
+                        status = style("OK", 'green') if not limiter_trace['blocked_metrics'] \
+                            else style("OVERFLOW", 'red')
+                        limiter_lines.append(
+                            "  " * 2 + "- [" + status + "] Limit " +
+                            str(limiter_def['selection']) + " by " + str(limiter_def["scope"]))
+
+                        # Limiter trace
+                        if limiter_trace['blocked_metrics']:
+                            limiter_lines.append(
+                                "  " * 4 + str(limiter_trace['blocked_metrics']) +
+                                " metrics blocked.")
+
+                        limiter_lines.append("")
+
+                        check_lines.extend(limiter_lines)
+
+                    lines += check_lines
 
         # Emitter status
         lines += [

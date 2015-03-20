@@ -52,19 +52,21 @@ class Governor(object):
         if self._check(named_args):
             return self._submit_metric(*args, **kw)
 
-    def flush(self):
-        pass
-
     def get_status(self):
         """
-        Returns limiter statuses
+        Returns limiter statuses and flush limiters
         """
-        return [l.get_status() for l in self._limiters]
+        statuses = [l.get_status() for l in self._limiters]
+
+        # Flush limiters
+        self._limiters = copy.deepcopy(self._LIMITERS)
+
+        return statuses
 
 
 class LimiterParser(object):
     """
-    A generic limiter
+    Limiter parser
     """
     @staticmethod
     def parse_limiters(config):
@@ -89,7 +91,7 @@ class Limiter(object):
     def __init__(self, scope, selection, limit=None):
         # Definition
         self._scope, self._selection = self._make_scope_and_selection(scope, selection)
-        self._limit_cardinal = limit
+        self._limit_cardinal = limit or "inf"
 
         # Metric values extractor
         self._extract_metric_keys = self._extract_to_keys(self._scope, self._selection)
@@ -139,7 +141,16 @@ class Limiter(object):
         :param selection: selection where the rule applies
         :type selection: string tuple or singleton
         """
-        return lambda x: (tuple(x.get(k) for k in scope), tuple(x.get(k) for k in selection))
+        def get(d, k):
+            """
+            Returns hashable d.get(k)
+            """
+            v = d.get(k)
+            if isinstance(v, list):
+                v = tuple(v)
+            return v
+
+        return lambda x: (tuple(get(x, k) for k in scope), tuple(get(x, k) for k in selection))
 
     def check(self, *args, **kw):
         """
@@ -175,10 +186,10 @@ class Limiter(object):
         scope_cardinal = len(self._selections_by_scope)
         scope_overflow_cardinal = 0
         max_selection_scope = None
-        max_selection_cardinal = None
+        max_selection_cardinal = 0
 
         for scope, selections in self._selections_by_scope.iteritems():
-            if not max_selection_cardinal or (max_selection_cardinal < len(selections)):
+            if max_selection_cardinal < len(selections):
                 max_selection_cardinal = len(selections)
                 max_selection_scope = scope
             if len(selections) >= self._limit_cardinal:

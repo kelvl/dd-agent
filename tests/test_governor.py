@@ -7,8 +7,11 @@ from aggregator import MetricsAggregator
 class MockMetricAggregator(MetricsAggregator):
     """a MockClass for tests"""
     def __init__(self):
-        mgovernor = Governor()
-        super(MockMetricAggregator, self).__init__("", governor=mgovernor)
+        self.governor = Governor()
+        super(MockMetricAggregator, self).__init__("", governor=self.governor)
+
+    def get_governor(self):
+        return self.governor
 
     def submit_metric(self, name, value=42, mtype='g', tags=None, hostname=None,
                       device_name=None, timestamp=None, sample_rate=1):
@@ -43,13 +46,10 @@ class GovernorTestCase(unittest.TestCase):
         m2 = MockMetricAggregator()
 
         self.assertTrue(m1.submit_metric('my_metric'))
-        self.assertFalse(m1.submit_metric('another_metric'))  # Blocked !
-        self.assertTrue(m1.submit_metric('my_metric'))    # Not blocked !
+        self.assertFalse(m1.submit_metric('another_metric'))    # Blocked !
+        self.assertTrue(m1.submit_metric('my_metric'))          # Not blocked !
 
-        self.assertTrue(m2.submit_metric('another_metric'))  # Not blocked
-
-    def test_instance_contamination(self):
-        pass
+        self.assertTrue(m2.submit_metric('another_metric'))     # Not blocked
 
     def test_empty_conf(self):
         """
@@ -74,6 +74,32 @@ class GovernorTestCase(unittest.TestCase):
             m_governor._name_args([1, 2, 3], {}) == {'arg1': 1, 'arg2': 2, 'arg3': 3})
         self.assertTrue(
             m_governor._name_args([1], {'arg2': 2, 'arg3': 3}) == {'arg1': 1, 'arg2': 2, 'arg3': 3})
+
+    def test_flush(self):
+        """
+        Getting governor status should flush limiters
+        """
+        Governor.init(self.LIMIT_METRIC_NB)
+
+        aggr = MockMetricAggregator()
+        governor = aggr.get_governor()
+
+        self.assertTrue(aggr.submit_metric('my_metric'))
+        self.assertFalse(aggr.submit_metric('another_metric'))    # Blocked !
+
+        # Get governor status
+        statuses = governor.get_status()
+
+        self.assertTrue(len(statuses) == 1)
+        mstatus = statuses[0]
+        self.assertTrue(mstatus['trace']['blocked_metrics'] == 1)
+
+        # Get it again
+        statuses = governor.get_status()
+
+        self.assertTrue(len(statuses) == 1)
+        mstatus = statuses[0]
+        self.assertTrue(mstatus['trace']['blocked_metrics'] == 0)
 
 
 class LimiterTestCase(unittest.TestCase):
@@ -100,6 +126,16 @@ class LimiterTestCase(unittest.TestCase):
 
         # Check trace
         self.assertTrue(limiter._blocked_metrics == 1)
+
+    def test_no_limit(self):
+        """
+        Always accept metrics when no limit is set
+        """
+        limiter = MockLimiter('key1', 'key2')
+
+        for x in xrange(10000):
+            self.assertTrue(limiter.check(
+                self.generate_metric("scope1", "selection_" + str(x))))
 
     def test_limiter_trace(self):
         """
@@ -139,7 +175,7 @@ class LimiterTestCase(unittest.TestCase):
         limiter1 = MockLimiter(('key1', 'key3'), ('key4', 'key5'), 1)
         limiter2 = MockLimiter('key1', 'key4', 1)
 
-        metric_args = {
+        metric = {
             'key1': 'value1',
             'key2': 'value2',
             'key3': 'value3',
@@ -148,13 +184,26 @@ class LimiterTestCase(unittest.TestCase):
         }
 
         # Test _to_scope_key
-        scope_key1, limit_key1 = limiter1._extract_metric_keys(metric_args)
-        self.assertTrue(scope_key1 == ('value1', 'value3'))
-        self.assertTrue(limit_key1 == ('value4', 'value5'))
+        scope_value1, limit_value1 = limiter1._extract_metric_keys(metric)
+        self.assertTrue(scope_value1 == ('value1', 'value3'))
+        self.assertTrue(limit_value1 == ('value4', 'value5'))
 
-        scope_key2, limit_key2 = limiter2._extract_metric_keys(metric_args)
-        self.assertTrue(scope_key2 == ('value1',))
-        self.assertTrue(limit_key2 == ('value4',))
+        scope_value2, limit_value2 = limiter2._extract_metric_keys(metric)
+        self.assertTrue(scope_value2 == ('value1',))
+        self.assertTrue(limit_value2 == ('value4',))
+
+    def test_hashable_value(self):
+        """
+        Selection values should always be hashable
+        """
+        metric = {
+            'key1': 'scope_value',
+            'key2': ["v1", "v2"],
+        }
+
+        limiter = MockLimiter('key1', 'key2', 1)
+        _, limit_value = limiter._extract_metric_keys(metric)
+        self.assertTrue(limit_value == (("v1", "v2"),), limit_value)
 
 
 class LimiterParserTestCase(unittest.TestCase):
@@ -186,9 +235,17 @@ class LimiterParserTestCase(unittest.TestCase):
     NO_SCOPE_CONFIG = {
         'limiters': [
             {
-                # 'scope': 'name',
                 'selection': 'tags',
                 'limit': 3
+            }
+        ]
+    }
+
+    NO_LIMIT_CONFIG = {
+        'limiters': [
+            {
+                'scope': 'instance',
+                'selection': 'tags',
             }
         ]
     }
@@ -209,13 +266,19 @@ class LimiterParserTestCase(unittest.TestCase):
         """
         Parse limiters
         """
-        # No config
-        self.assertTrue(LimiterParser.parse_limiters(self.NO_CONFIG) == [])
-
         # Incorrect config
-        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters, self.NO_SCOPE_CONFIG)
-        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters, self.UNKOWN_SCOPE_CONFIG)
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters,
+                          self.NO_SCOPE_CONFIG)
+        self.assertRaises(LimiterConfigError, LimiterParser.parse_limiters,
+                          self.UNKOWN_SCOPE_CONFIG)
 
         # Correct config
         rules = LimiterParser.parse_limiters(self.LIMIT_CONFIG)
         self.assertTrue(len(rules) == 4)
+
+        # No config is a correct config
+        self.assertTrue(LimiterParser.parse_limiters(self.NO_CONFIG) == [])
+
+        # No limit is a correct config
+        rules = LimiterParser.parse_limiters(self.NO_LIMIT_CONFIG)
+        self.assertTrue(len(rules) == 1)

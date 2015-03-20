@@ -97,14 +97,15 @@ class Agent(Daemon):
         hostname = get_hostname(agentConfig)
         systemStats = get_system_stats()
         emitters = self._get_emitters(agentConfig)
-        # Load the checks.d checks
-        checksd = load_check_directory(agentConfig, hostname)
-
-        self.collector = Collector(agentConfig, emitters, systemStats, hostname)
 
         # Configure the governor
         governor_config = get_governor_config()
         Governor.init(governor_config)
+
+        # Load the checks.d checks
+        checksd = load_check_directory(agentConfig, hostname)
+
+        self.collector = Collector(agentConfig, emitters, systemStats, hostname)
 
         # Configure the watchdog.
         check_frequency = int(agentConfig['check_freq'])

@@ -271,6 +271,10 @@ class Collector(object):
                 current_check_metrics = check.get_metrics()
                 current_check_events = check.get_events()
 
+                # Collect governor status
+                # import pdb; pdb.set_trace()
+                current_governor_status = check.get_governor_status()
+
                 # Save them for the payload.
                 metrics.extend(current_check_metrics)
                 if current_check_events:
@@ -285,9 +289,11 @@ class Collector(object):
             except Exception:
                 log.exception("Error running check %s" % check.name)
 
-            check_status = CheckStatus(check.name, instance_statuses, metric_count, event_count, service_check_count,
+            check_status = CheckStatus(
+                check.name, instance_statuses, metric_count, event_count, service_check_count,
                 library_versions=check.get_library_info(),
-                source_type_name=check.SOURCE_TYPE_NAME or check.name)
+                source_type_name=check.SOURCE_TYPE_NAME or check.name,
+                governor_status=current_governor_status)
 
             # Service check for Agent checks failures
             service_check_tags = ["check:%s" % check.name]
